@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRef } from "react";
 
 export default function Home() {
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
+  const fileInputRef = useRef(null);
 
   async function uploadSingleFile(file) {
     const presignResponse = await fetch("/api/presign", {
@@ -50,9 +52,9 @@ export default function Home() {
     setError("");
     setIsUploading(true);
     setResults([]);
+    const uploaded = [];
 
     try {
-      const uploaded = [];
       for (const file of files) {
         // Upload sequentially for predictable progress and simpler error handling.
         const result = await uploadSingleFile(file);
@@ -60,9 +62,15 @@ export default function Home() {
       }
       setResults(uploaded);
     } catch (err) {
+      // Keep successfully uploaded files visible if a later upload fails.
+      setResults(uploaded);
       setError(err.message || "Upload failed");
     } finally {
       setIsUploading(false);
+      setFiles([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   }
 
@@ -72,6 +80,7 @@ export default function Home() {
       <p>Select one or more files, then upload to your S3 bucket using pre-signed URLs.</p>
 
       <input
+        ref={fileInputRef}
         type="file"
         multiple
         onChange={(event) => setFiles(Array.from(event.target.files || []))}
