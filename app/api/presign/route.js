@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { defaultProvider } from "@aws-sdk/credential-provider-node";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export const runtime = "nodejs";
@@ -6,8 +7,6 @@ export const dynamic = "force-dynamic";
 
 const REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || "uploader-briefly";
-
-const s3Client = new S3Client({ region: REGION });
 
 function safeFileName(fileName) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -32,6 +31,13 @@ export async function POST(request) {
       ContentType: fileType,
     });
 
+    const s3Client = new S3Client({
+      region: REGION,
+      credentials: defaultProvider({
+        profile: process.env.AWS_PROFILE,
+      }),
+    });
+
     const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
 
     return Response.json({
@@ -42,8 +48,17 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("Failed to generate pre-signed URL:", error);
+
+    const isCredentialsError =
+      typeof error?.name === "string" &&
+      error.name.toLowerCase().includes("credentials");
+
     return Response.json(
-      { error: "Unable to generate upload URL" },
+      {
+        error: isCredentialsError
+          ? "AWS credentials were not found by the server process. Set AWS_PROFILE (if needed) and ensure credentials are available to Next.js."
+          : "Unable to generate upload URL",
+      },
       { status: 500 }
     );
   }
